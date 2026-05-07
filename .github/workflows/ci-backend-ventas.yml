@@ -2,44 +2,55 @@ name: CI/CD Backend Ventas
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
   build-push-deploy-ventas:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout código
-      uses: actions/checkout@v3
+      - name: Checkout código
+        uses: actions/checkout@v3
 
-    - name: Configurar credenciales AWS
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # Si usas cuenta de AWS Academy/Learner Lab, descomenta la siguiente línea:
+          # aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Login en Amazon ECR
-      uses: aws-actions/amazon-ecr-login@v1
+      - name: Login en Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Build y Push Ventas a ECR
-      run: |
-        cd back-Ventas_SpringBoot/Springboot-API-REST
-        docker build -t app-backend-ventas .
-        docker tag app-backend-ventas:latest ${{ secrets.ECR_REPO_URL_VENTAS }}:latest
-        docker push ${{ secrets.ECR_REPO_URL_VENTAS }}:latest
+      - name: Build y Push Ventas a ECR
+        run: |
+          cd back-Ventas_SpringBoot/Springboot-API-REST
+          docker build -t app-backend-ventas .
+          docker tag app-backend-ventas:latest ${{ secrets.ECR_REPO_URL_VENTAS }}:latest
+          docker push ${{ secrets.ECR_REPO_URL_VENTAS }}:latest
 
-    - name: Desplegar Ventas vía SSM (Docker Compose)
-      run: |
-        aws ssm send-command \
-          --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
-          --document-name "AWS-RunShellScript" \
-          --parameters '{"commands":[
-            "aws ecr get-login-password --region '${{ secrets.AWS_REGION }}' | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-            "mkdir -p /home/ec2-user/app",
-            "cd /home/ec2-user/app",
-            "docker-compose pull app-backend-ventas",
-            "docker-compose up -d --no-deps app-backend-ventas"
-          ]}' \
-          --output text
+      - name: Desplegar Ventas vía SSM (Docker Compose)
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --document-name "AWS-RunShellScript" \
+            --parameters '{"commands":[
+              "set -e",
+              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
+              "mkdir -p /home/ec2-user/app",
+              "cd /home/ec2-user/app",
+              "sudo docker-compose pull app-backend-ventas",
+              "sudo docker-compose up -d --no-deps app-backend-ventas"
+            ]}' \
+            --query "Command.CommandId" \
+            --output text)
+            
+          echo "Comando enviado a EC2. ID: $COMMAND_ID"
+          echo "Esperando a que la instancia EC2 termine de desplegar Ventas..."
+
+          # Obliga a GitHub a esperar el resultado final
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id ${{ secrets.EC2_INSTANCE_ID }}
