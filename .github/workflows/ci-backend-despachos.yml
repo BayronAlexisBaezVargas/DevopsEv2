@@ -3,8 +3,7 @@ name: CI/CD Backend Despachos
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - "back-Despachos_SpringBoot/**"
+  workflow_dispatch:
 
 jobs:
   build-push-deploy-despachos:
@@ -31,16 +30,16 @@ jobs:
         docker tag app-backend-despachos:latest ${{ secrets.ECR_REPO_URL_DESPACHOS }}:latest
         docker push ${{ secrets.ECR_REPO_URL_DESPACHOS }}:latest
 
-    - name: Desplegar Despachos vía SSM
+    - name: Desplegar Despachos vía SSM (Docker Compose)
       run: |
         aws ssm send-command \
           --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
           --document-name "AWS-RunShellScript" \
           --parameters '{"commands":[
             "aws ecr get-login-password --region '${{ secrets.AWS_REGION }}' | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-            "docker pull ${{ secrets.ECR_REPO_URL_DESPACHOS }}:latest",
-            "docker stop app-backend-despachos || true",
-            "docker rm app-backend-despachos || true",
-            "docker run -d --name app-backend-despachos -p 8082:8080 ${{ secrets.ECR_REPO_URL_DESPACHOS }}:latest"
+            "mkdir -p /home/ec2-user/app",
+            "cd /home/ec2-user/app",
+            "docker-compose pull app-backend-despachos",
+            "docker-compose up -d --no-deps app-backend-despachos"
           ]}' \
           --output text
