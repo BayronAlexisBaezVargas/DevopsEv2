@@ -24,8 +24,9 @@ export const FormDespacho = ({ venta, onClose }) => {
     console.log("Datos del formulario:", jsonData);
 
     try {
+      // Rutas relativas actualizadas para Ventas y Despachos
       await axios.put(
-        `http://54.157.186.66:8081/api/v1/ventas/${venta.idVenta}`,
+        `/backend-ventas/api/v1/ventas/${venta.idVenta}`,
         jsonDataSales,
         {
           headers:{
@@ -34,7 +35,7 @@ export const FormDespacho = ({ venta, onClose }) => {
       }
         }
       );
-      await axios.post("http://54.157.186.66:8082/api/v1/despachos", jsonData, {
+      await axios.post("/backend-despachos/api/v1/despachos", jsonData, {
         headers:{
           'Content-Type': 'application/json',
           'Accept': 'application/json'
@@ -51,6 +52,7 @@ export const FormDespacho = ({ venta, onClose }) => {
     }
     onClose();
   };
+  
   return (
     <>
       <form

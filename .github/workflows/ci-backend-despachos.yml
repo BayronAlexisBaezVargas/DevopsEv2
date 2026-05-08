@@ -17,8 +17,8 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          # Si usas cuenta de AWS Academy/Learner Lab, descomenta la siguiente línea:
-          # aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          # 👇 LÍNEA DESCOMENTADA: Obligatorio para Learner Lab
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} 
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login en Amazon ECR
@@ -42,15 +42,15 @@ jobs:
               "mkdir -p /home/ec2-user/app",
               "cd /home/ec2-user/app",
               "sudo docker-compose pull app-backend-despachos",
-              "sudo docker-compose up -d --no-deps app-backend-despachos"
+              "sudo docker-compose up -d --no-deps app-backend-despachos",
+              "sudo docker image prune -f"
             ]}' \
             --query "Command.CommandId" \
             --output text)
             
           echo "Comando enviado a EC2. ID: $COMMAND_ID"
-          echo "Esperando a que la instancia EC2 termine de desplegar Despachos..."
+          echo "Esperando a que la instancia EC2 termine de actualizar el servicio de despachos..."
 
-          # Obliga a GitHub a esperar el resultado final
           aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
             --instance-id ${{ secrets.EC2_INSTANCE_ID }}
