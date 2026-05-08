@@ -17,8 +17,8 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          # Si usas cuenta de AWS Academy/Learner Lab, descomenta la siguiente línea:
-          # aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          # 👇 LÍNEA DESCOMENTADA: Obligatorio para Learner Lab
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} 
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login en Amazon ECR
@@ -39,10 +39,12 @@ jobs:
             --parameters '{"commands":[
               "set -e",
               "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "sudo docker pull ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest",
               "sudo docker stop app-frontend || true",
               "sudo docker rm app-frontend || true",
-              "sudo docker run -d --name app-frontend -p 80:80 ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest"
+              "sudo docker rmi ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest || true",
+              "sudo docker pull ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest",
+              "sudo docker run -d --name app-frontend -p 80:80 ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest",
+              "sudo docker image prune -f"
             ]}' \
             --query "Command.CommandId" \
             --output text)
@@ -50,7 +52,6 @@ jobs:
           echo "Comando enviado a EC2. ID: $COMMAND_ID"
           echo "Esperando a que la instancia EC2 termine de descargar y levantar el contenedor..."
 
-          # Obliga a GitHub a esperar el resultado final de la EC2
           aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
             --instance-id ${{ secrets.EC2_FRONTEND_INSTANCE_ID }}

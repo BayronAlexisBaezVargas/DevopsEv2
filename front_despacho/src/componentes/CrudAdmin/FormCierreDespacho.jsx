@@ -15,8 +15,9 @@ export const FormCierreDespacho = ({ despacho, onClose }) => {
     console.log("Datos del formulario:", jsonData);
 
     try {
+      // Ruta relativa actualizada
       await axios.put(
-        `http://54.157.186.66:8082/api/v1/despachos/${despacho.idDespacho}`,
+        `/backend-despachos/api/v1/despachos/${despacho.idDespacho}`,
         jsonData,
         {
           headers:{

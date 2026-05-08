@@ -8,7 +8,8 @@ export const TableDespachos = () => {
 
   const despacho = async () => {
     await axios
-      .get("http://54.157.186.66:8082/api/v1/despachos", {
+      // 👇 CAMBIO AQUÍ: Quitamos la IP y usamos una ruta relativa
+      .get("/backend-despachos/api/v1/despachos", {
         headers:{
               'Content-Type': 'application/json',
               'Accept': 'application/json'
