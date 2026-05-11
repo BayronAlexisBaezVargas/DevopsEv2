@@ -2,56 +2,49 @@ name: CI/CD Frontend
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
+    paths:
+      - "front_despacho/**"
   workflow_dispatch:
 
 jobs:
-  build-push-deploy-frontend:
+  build-push-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout código
-        uses: actions/checkout@v3
+    - name: Checkout código
+      uses: actions/checkout@v4
 
-      - name: Configurar credenciales AWS
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          # 👇 LÍNEA DESCOMENTADA: Obligatorio para Learner Lab
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} 
-          aws-region: ${{ secrets.AWS_REGION }}
+    - name: Configurar credenciales AWS
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+        aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Login en Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v1
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build y Push Frontend a ECR
-        run: |
-          cd front_despacho
-          docker build -t app-frontend .
-          docker tag app-frontend:latest ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest
-          docker push ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest
+    - name: Build y Push Frontend a ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.registry }}
+        REPO_NAME: ${{ secrets.ECR_REPO_NAME_FRONTEND }}
+      run: |
+        cd front_despacho
+        docker build -t $ECR_REGISTRY/$REPO_NAME:latest .
+        docker push $ECR_REGISTRY/$REPO_NAME:latest
 
-      - name: Desplegar Frontend vía SSM
-        run: |
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids ${{ secrets.EC2_FRONTEND_INSTANCE_ID }} \
-            --document-name "AWS-RunShellScript" \
-            --parameters '{"commands":[
-              "set -e",
-              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "sudo docker stop app-frontend || true",
-              "sudo docker rm app-frontend || true",
-              "sudo docker rmi ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest || true",
-              "sudo docker pull ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest",
-              "sudo docker run -d --name app-frontend -p 80:80 ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest",
-              "sudo docker image prune -f"
-            ]}' \
-            --query "Command.CommandId" \
-            --output text)
-            
-          echo "Comando enviado a EC2. ID: $COMMAND_ID"
-          echo "Esperando a que la instancia EC2 termine de descargar y levantar el contenedor..."
-
-          aws ssm wait command-executed \
-            --command-id "$COMMAND_ID" \
-            --instance-id ${{ secrets.EC2_FRONTEND_INSTANCE_ID }}
+    - name: Desplegar Frontend vía SSM
+      run: |
+        aws ssm send-command \
+          --instance-ids ${{ secrets.EC2_WEB_INSTANCE_ID }} \
+          --document-name "AWS-RunShellScript" \
+          --parameters '{"commands":[
+            "aws ecr get-login-password --region '${{ secrets.AWS_REGION }}' | docker login --username AWS --password-stdin ${{ steps.login-ecr.registry }}",
+            "docker pull ${{ steps.login-ecr.registry }}/${{ secrets.ECR_REPO_NAME_FRONTEND }}:latest",
+            "docker stop app-frontend || true",
+            "docker rm app-frontend || true",
+            "docker run -d --name app-frontend -p 80:80 ${{ steps.login-ecr.registry }}/${{ secrets.ECR_REPO_NAME_FRONTEND }}:latest"
+          ]}' \
+          --output text
