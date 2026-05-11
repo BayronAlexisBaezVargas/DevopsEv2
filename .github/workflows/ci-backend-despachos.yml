@@ -2,48 +2,55 @@ name: CI/CD Backend Despachos
 
 on:
   push:
-    branches: [ "main" ]
-    paths:
-      - "back-Despachos_SpringBoot/**"
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
-  build-push-deploy:
+  build-push-deploy-despachos:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout código
-      uses: actions/checkout@v4
+      - name: Checkout código
+        uses: actions/checkout@v3
 
-    - name: Configurar credenciales AWS
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # 👇 LÍNEA DESCOMENTADA: Obligatorio para Learner Lab
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} 
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
+      - name: Login en Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Build y Push Despachos a ECR
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.registry }}
-        REPO_NAME: ${{ secrets.ECR_REPO_NAME_DESPACHOS }}
-      run: |
-        cd back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-        docker build -t $ECR_REGISTRY/$REPO_NAME:latest .
-        docker push $ECR_REGISTRY/$REPO_NAME:latest
+      - name: Build y Push Despachos a ECR
+        run: |
+          cd back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+          docker build -t app-backend-despachos .
+          docker tag app-backend-despachos:latest ${{ secrets.ECR_REPO_URL_DESPACHOS }}:latest
+          docker push ${{ secrets.ECR_REPO_URL_DESPACHOS }}:latest
 
-    - name: Desplegar Despachos vía SSM (Docker Compose)
-      run: |
-        aws ssm send-command \
-          --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
-          --document-name "AWS-RunShellScript" \
-          --parameters '{"commands":[
-            "aws ecr get-login-password --region '${{ secrets.AWS_REGION }}' | docker login --username AWS --password-stdin ${{ steps.login-ecr.registry }}",
-            "cd /home/ec2-user/app",
-            "docker-compose pull app-backend-despachos",
-            "docker-compose up -d --force-recreate --no-deps app-backend-despachos"
-          ]}' \
-          --output text
+      - name: Desplegar Despachos vía SSM (Docker Compose)
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --document-name "AWS-RunShellScript" \
+            --parameters '{"commands":[
+              "set -e",
+              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
+              "mkdir -p /home/ec2-user/app",
+              "cd /home/ec2-user/app",
+              "sudo docker-compose pull app-backend-despachos",
+              "sudo docker-compose up -d --no-deps app-backend-despachos",
+              "sudo docker image prune -f"
+            ]}' \
+            --query "Command.CommandId" \
+            --output text)
+            
+          echo "Comando enviado a EC2. ID: $COMMAND_ID"
+          echo "Esperando a que la instancia EC2 termine de actualizar el servicio de despachos..."
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id ${{ secrets.EC2_INSTANCE_ID }}
