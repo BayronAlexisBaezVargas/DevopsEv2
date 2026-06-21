@@ -32,5 +32,10 @@ jobs:
       - name: Desplegar en Amazon EKS
         run: |
           aws eks update-kubeconfig --region us-east-1 --name ${{ secrets.EKS_CLUSTER_NAME }}
+          
+          # 1. Eliminar el deployment anterior para forzar recreación limpia
+          # Nota: Solo borramos el 'deployment', no el 'service', para que no cambie tu URL pública
+          kubectl delete deployment frontend --ignore-not-found
+          
+          # 2. Aplicar los nuevos manifiestos
           kubectl apply -f k8s/frontend.yaml
-          kubectl rollout restart deployment frontend

@@ -32,5 +32,12 @@ jobs:
       - name: Desplegar en Amazon EKS
         run: |
           aws eks update-kubeconfig --region us-east-1 --name ${{ secrets.EKS_CLUSTER_NAME }}
+          
+          # 1. Asegurar que la base de datos y sus secretos existan
+          kubectl apply -f k8s/mysql.yaml
+          
+          # 2. Eliminar el deployment anterior para forzar recreación limpia
+          kubectl delete deployment backend-despachos --ignore-not-found
+          
+          # 3. Aplicar los nuevos manifiestos
           kubectl apply -f k8s/backend-despachos.yaml
-          kubectl rollout restart deployment backend-despachos
