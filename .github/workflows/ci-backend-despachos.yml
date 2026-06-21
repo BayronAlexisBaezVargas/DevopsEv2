@@ -1,56 +1,36 @@
-name: CI/CD Backend Despachos
+name: CI/CD Backend Despachos (EKS)
 
 on:
   push:
     branches: ["main"]
-  workflow_dispatch:
 
 jobs:
   build-push-deploy-despachos:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          # 👇 LÍNEA DESCOMENTADA: Obligatorio para Learner Lab
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} 
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-1
 
       - name: Login en Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build y Push Despachos a ECR
+      - name: Build y Push a ECR
         run: |
           cd back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
           docker build -t app-backend-despachos .
-          docker tag app-backend-despachos:latest ${{ secrets.ECR_REPO_URL_DESPACHOS }}:latest
-          docker push ${{ secrets.ECR_REPO_URL_DESPACHOS }}:latest
+          docker tag app-backend-despachos:latest 174448597449.dkr.ecr.us-east-1.amazonaws.com/back-despachos:latest
+          docker push 174448597449.dkr.ecr.us-east-1.amazonaws.com/back-despachos:latest
 
-      - name: Desplegar Despachos vía SSM (Docker Compose)
+      - name: Desplegar en Amazon EKS
         run: |
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
-            --document-name "AWS-RunShellScript" \
-            --parameters '{"commands":[
-              "set -e",
-              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "mkdir -p /home/ec2-user/app",
-              "cd /home/ec2-user/app",
-              "sudo docker-compose pull app-backend-despachos",
-              "sudo docker-compose up -d --no-deps app-backend-despachos",
-              "sudo docker image prune -f"
-            ]}' \
-            --query "Command.CommandId" \
-            --output text)
-            
-          echo "Comando enviado a EC2. ID: $COMMAND_ID"
-          echo "Esperando a que la instancia EC2 termine de actualizar el servicio de despachos..."
-
-          aws ssm wait command-executed \
-            --command-id "$COMMAND_ID" \
-            --instance-id ${{ secrets.EC2_INSTANCE_ID }}
+          aws eks update-kubeconfig --region us-east-1 --name ${{ secrets.EKS_CLUSTER_NAME }}
+          kubectl apply -f k8s/backend-despachos.yaml
+          kubectl rollout restart deployment backend-despachos

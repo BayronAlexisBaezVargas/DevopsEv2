@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-despachos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-despachos
+  template:
+    metadata:
+      labels:
+        app: backend-despachos
+    spec:
+      containers:
+      - name: backend-despachos
+        # Update with your actual ECR image URL when deploying
+        image: 174448597449.dkr.ecr.us-east-1.amazonaws.com/back-despachos:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8081
+        env:
+        - name: DB_ENDPOINT
+          value: "mysql-db" # Matches the MySQL service name
+        - name: DB_PORT
+          value: "3306"
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_DATABASE
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: despachos-service # This must match what Nginx expects
+spec:
+  selector:
+    app: backend-despachos
+  ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081

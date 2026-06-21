@@ -21,7 +21,7 @@ WORKDIR /app
 COPY --from=build /app/target/Springboot-API-REST-DESPACHO-0.0.1-SNAPSHOT.jar app-despachos.jar
 
 # Exponemos el puerto interno por defecto de Spring Boot
-EXPOSE 8080
+EXPOSE 8081
 
 # Comando para iniciar la aplicación
 ENTRYPOINT ["java", "-jar", "app-despachos.jar"]

@@ -1,57 +1,36 @@
-name: CI/CD Frontend
+name: CI/CD Frontend (EKS)
 
 on:
   push:
     branches: ["main"]
-  workflow_dispatch:
 
 jobs:
   build-push-deploy-frontend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          # 👇 LÍNEA DESCOMENTADA: Obligatorio para Learner Lab
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} 
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-1
 
       - name: Login en Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build y Push Frontend a ECR
+      - name: Build y Push a ECR
         run: |
           cd front_despacho
           docker build -t app-frontend .
-          docker tag app-frontend:latest ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest
-          docker push ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest
+          docker tag app-frontend:latest 174448597449.dkr.ecr.us-east-1.amazonaws.com/front:latest
+          docker push 174448597449.dkr.ecr.us-east-1.amazonaws.com/front:latest
 
-      - name: Desplegar Frontend vía SSM
+      - name: Desplegar en Amazon EKS
         run: |
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids ${{ secrets.EC2_FRONTEND_INSTANCE_ID }} \
-            --document-name "AWS-RunShellScript" \
-            --parameters '{"commands":[
-              "set -e",
-              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "sudo docker stop app-frontend || true",
-              "sudo docker rm app-frontend || true",
-              "sudo docker rmi ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest || true",
-              "sudo docker pull ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest",
-              "sudo docker run -d --name app-frontend -p 80:80 ${{ secrets.ECR_REPO_URL_FRONTEND }}:latest",
-              "sudo docker image prune -f"
-            ]}' \
-            --query "Command.CommandId" \
-            --output text)
-            
-          echo "Comando enviado a EC2. ID: $COMMAND_ID"
-          echo "Esperando a que la instancia EC2 termine de descargar y levantar el contenedor..."
-
-          aws ssm wait command-executed \
-            --command-id "$COMMAND_ID" \
-            --instance-id ${{ secrets.EC2_FRONTEND_INSTANCE_ID }}
+          aws eks update-kubeconfig --region us-east-1 --name ${{ secrets.EKS_CLUSTER_NAME }}
+          kubectl apply -f k8s/frontend.yaml
+          kubectl rollout restart deployment frontend
